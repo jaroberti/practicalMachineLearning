@@ -1,0 +1,122 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Josh Roberti"
+date: "Sunday, November 22, 2015"
+output: html_document
+---
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+```
+
+#Introduction
+  Barbell lifts conducted by six participants were recorded.  Each participant completed the barbell lifts correctly and incorrectly in 5 different positions (classes) that consisted of sitting-down, standing-up, standing, walking, and sitting.  These data were captured by Ugulino *et al.* (2012).  Two different datasets were provided.  The first dataset comprised participant information, classe information, and numerous acccelerometer data from wearable exercise devices, among others.  The dimensions of this dataset were 19622 x 160.  The second dataset mirrored that of the first, however the "classe" variable was excluded, as this variable was to be predicted based on a model fit, and the dimensions were 20 x 160.  This was considered the *validation* dataset.
+
+#Materials and Methods
+  The data were loaded into R and split into two separate data frames: training and testing, via a 60/40 split.  At this point, three dataframes existed: *training, testing, and validation.* 
+```{r set directory, echo=FALSE}
+#load necessary packages:
+library(caret)
+
+#load the training and testing dataset
+setwd("C:/Users/jroberti/JohnsHopkinsDataScience/practicalMachineLearning")
+```
+
+```{r open files}
+data<-read.csv("pml-training.csv")
+data2<-read.csv("pml-testing.csv")
+
+#Because this dataset is large (19622 x 160), and a "validation" dataset is supplied I'm dividing the data into a a 60/40 split 
+inTrain <- createDataPartition(y=data$classe,p=0.6, list=FALSE)
+training <- data[inTrain,]
+testing <- data[-inTrain,]
+```
+
+Next, the data were cleaned  Specifically, irrelevant columns (including those with numerous NA values) were removed from the datasets. 
+
+```{r}
+#identify columns where >90% of the values are NA within the training dataset
+missingData<-colnames(training)[colSums(is.na(training)) > 0.90*nrow(training)]
+#remove these columns from the training dataset:
+training<-training[,!(names(training) %in% missingData)]
+#need to do the same thing for the testing dataset  and "Cases" dataset using column names from training dataset:
+testing<-testing[,!(names(testing) %in% missingData)]
+data2<-data2[,!(names(data2) %in% missingData)]
+
+#We should also check to see if there are columns in the "Cases" dataset as well: 
+missingData2<-colnames(data2)[colSums(is.na(data2)) > 0.90*nrow(data2)]
+#There are another 33 columns within the testing dataset where >90% of values are NA. Will remove these from the training / testing / and Cases datasets.
+training<-training[,!(names(training) %in% missingData2)]
+testing<-testing[,!(names(testing) %in% missingData2)]
+data2<-data2[,!(names(data2) %in% missingData2)]
+
+#lastly, we're going to remove the first 7 columns of the dataset since they're irrelevant variables for the analysis:
+training<-training[,-c(1:7)] 
+testing<-testing[,-c(1:7)]
+data2<-data2[,-c(1:7)]
+```
+
+  After all three datasets were cleaned of irrelevant predictor variables, the dimensions were 11776 x 53, 7846 x 60, and 20 x 53 for the training, testing, and validation datasets,respectively.  Next a model was fit to the training dataset.  The model was fit using the *random forest* technique, *K fold cross validation* with *k=3* and also utilized parallel processing to cut down on overall model processing time.
+
+```{r model fit, cache=TRUE}
+#load parallel processing package to optimize model fit
+library(doParallel)
+
+cl <- makeCluster(detectCores())
+registerDoParallel(cl)
+#fit the model using k-cross validation, where k=3
+model <- train(classe~., data=training, method = "rf", trControl = trainControl(method = "cv", number = 3))
+```
+
+  Predictions were then made using the testing dataset:
+```{r}
+# make predictions
+predictions <- predict(model, testing)
+# summarize results 
+predictionTesting<-confusionMatrix(predictions, testing$classe)
+```
+
+  Finally, the model was fit to the validation dataset and predictions for each "Case" were produced.
+```{r}
+predictions_final <- predict(model, data2)
+```
+
+  Individual text files were then generated for each "case" prediction (predictions_final) using the below function.  Each text file was then uploaded to the Coursera website.
+
+```{r}
+setwd("./answers_course_project")
+#predict classe and output to individual files:
+pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+}
+
+#write answers to individual files using above functions
+pml_write_files(predictions_final)
+```
+
+
+#Results
+  Shown below are the prediction results produced when fitting the model to the testing dataset.
+```{r}
+#print model accuracy
+predictionTesting$overall[1]
+#print out of sample error rate:
+OOS<-1-predictionTesting$overall[1]
+names(OOS)<-"OOS Error Rate"
+OOS
+```
+
+ Here, the individual predictions for the validation dataset are shown below.  Accuracy metrics were provided when uploading these predictions to the Coursera Website.
+```{r}
+predictions_final
+```
+
+#Conclusion
+  The combination of sufficiently cleaning the datasets, using a random forest model fit with k-fold cross validations provided a very accurate model.  When submitting the individual predictions on the validation dataset a grade of 100% (20/20) was achieved.
+  
+#References:
+  Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6. 
+
